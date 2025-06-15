@@ -107,7 +107,7 @@ function getSortIndicator($column) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Batches - YSLProduction</title>
+    <title>View Batches - Roti Seri Production</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/batch.css">
@@ -162,6 +162,9 @@ function getSortIndicator($column) {
 
                 <a href="add_batch.php" class="add-btn">
                     <i class="fas fa-plus"></i> Add New Batch
+                </a>
+                <a href="export_batches.php" class="export-btn">
+                    <i class="fas fa-file-excel"></i> Export to Excel
                 </a>
             </div>
 
@@ -227,10 +230,10 @@ function getSortIndicator($column) {
                                         <!-- <div class="quality-comments">
                                             <?php echo htmlspecialchars($batch['quality_check'] ?? '-'); ?>
                                         </div> -->
-                                        <a href="edit_batch.php?id=<?php echo $batch['batch_id']; ?>&section=quality_check" 
-                                           class="action-btn edit-btn <?php echo ($batch['batch_status'] === 'Completed') ? 'disabled' : ''; ?>" 
-                                           title="<?php echo ($batch['batch_status'] === 'Completed') ? 'Cannot edit completed batch' : 'Edit'; ?>"
-                                           <?php echo ($batch['batch_status'] === 'Completed') ? 'onclick="return false;"' : ''; ?>>
+                                        <a href="quality_check.php?id=<?php echo $batch['batch_id']; ?>&section=quality_check" 
+                                           class="action-btn edit-btn <?php echo ($batch['batch_status'] !== 'Completed') ? 'disabled' : ''; ?>" 
+                                           title="<?php echo ($batch['batch_status'] !== 'Completed') ? 'Cannot edit completed batch' : 'Edit'; ?>"
+                                           <?php echo ($batch['batch_status'] !== 'Completed') ? 'onclick="return false;"' : ''; ?>>
                                             <i class="fas fa-edit"></i> 
                                         </a>
                                         <button class="action-btn edit-btn" 
@@ -337,7 +340,8 @@ function getSortIndicator($column) {
                                     <th>Texture</th>
                                     <th>Taste & Flavour</th>
                                     <th>Shape & Size</th>
-                                    <th>Packaging</th>
+                                    <th>Packaging</th>  
+                                    <th>Remarks</th>                                  
                                     <th>Date & Time</th>
                                 </tr>
                             </thead>
@@ -353,6 +357,7 @@ function getSortIndicator($column) {
                                 <td>${qc.taste_flavour}</td>
                                 <td>${qc.shape_size}</td>
                                 <td>${qc.packaging}</td>
+                                <td>${qc.qc_comments}</td>
                                 <td>${new Date(qc.created_at).toLocaleString()}</td>
                             </tr>
                         `;
