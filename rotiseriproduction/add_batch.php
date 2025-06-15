@@ -116,14 +116,10 @@ try {
 
             // Validate and sanitize text inputs
             $remarks = trim(filter_var($_POST['remarks'], FILTER_SANITIZE_STRING));
-            $quality_check = trim(filter_var($_POST['quality_check'], FILTER_SANITIZE_STRING));
 
             // Check length limits
             if (strlen($remarks) > MAX_REMARKS_LENGTH) {
                 throw new Exception("Remarks exceed maximum length of " . MAX_REMARKS_LENGTH . " characters");
-            }
-            if (strlen($quality_check) > MAX_QUALITY_CHECK_LENGTH) {
-                throw new Exception("Quality check comments exceed maximum length of " . MAX_QUALITY_CHECK_LENGTH . " characters");
             }
 
             // Validate assignments array
@@ -163,9 +159,9 @@ try {
 
             // Insert batch
             $stmt = $conn->prepare("INSERT INTO tbl_batches (recipe_id, schedule_id, batch_startTime, 
-                                                          batch_endTime, batch_remarks, quality_check) 
-                                  VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$recipe_id, $schedule_id, $start_time, $end_time, $remarks, $quality_check]);
+                                                          batch_endTime, batch_remarks) 
+                                  VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$recipe_id, $schedule_id, $start_time, $end_time, $remarks]);
             
             $batch_id = $conn->lastInsertId();
 
@@ -207,7 +203,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Batch - YSLProduction</title>
+    <title>Add Batch - Roti Seri Production</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/batch.css">
@@ -338,12 +334,6 @@ try {
                 <button type="button" class="add-task-btn" onclick="addTask()">
                     <i class="fas fa-plus"></i> Add Another Task
                 </button>
-            </div>
-
-            <div class="form-group">
-                <label for="quality_check">Quality Check Comments</label>
-                <textarea id="quality_check" name="quality_check" rows="3" 
-                          placeholder="Enter quality check comments, production issues, or quantity concerns..."></textarea>
             </div>
 
             <div class="form-actions">
