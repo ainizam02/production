@@ -19,7 +19,9 @@ function addTask() {
                 <option value="">Select Task</option>
                 <option value="Mixing">Mixing</option>
                 <option value="Baking">Baking</option>
+                <option value="Cooling">Cooling</option>
                 <option value="Decorating">Decorating</option>
+                <option value="Packaging">Packaging</option>
             </select>
         </div>
         <button type="button" class="remove-task" onclick="removeTask(this)">
@@ -85,6 +87,7 @@ function viewQc(batchId) {
                             <th>Taste & Flavour</th>
                             <th>Shape & Size</th>
                             <th>Packaging</th>
+                            <th>Remarks</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -99,6 +102,7 @@ function viewQc(batchId) {
                         <td>${qc.taste_flavour}</td>
                         <td>${qc.shape_size}</td>
                         <td>${qc.packaging}</td>
+                        <td>${qc.qc_comments}</td>
                     </tr>
                 `;
             });
