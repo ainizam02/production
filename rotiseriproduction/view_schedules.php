@@ -78,7 +78,7 @@ function getSortLink($field, $current_sort, $current_order) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Production Schedule - YSLProduction</title>
+    <title>Production Schedule - Roti Seri Production</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/schedule.css">
@@ -127,6 +127,9 @@ function getSortLink($field, $current_sort, $current_order) {
                 <?php if ($_SESSION['user_role'] !== 'Baker'): ?>
                     <a href="add_schedule.php" class="add-btn">
                         <i class="fas fa-plus"></i> Add New Schedule
+                    </a>
+                    <a href="export_schedules.php" class="export-btn">
+                        <i class="fas fa-file-excel"></i> Export to Excel
                     </a>
                 <?php endif; ?>
             </div>
