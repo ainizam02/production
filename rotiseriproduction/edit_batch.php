@@ -24,7 +24,7 @@ $error_message = '';
 // Add these constants at the top of the file after session_start()
 define('MAX_REMARKS_LENGTH', 500);
 define('MAX_QUALITY_CHECK_LENGTH', 500);
-define('ALLOWED_TASKS', ['Mixing', 'Baking', 'Decorating']);
+define('ALLOWED_TASKS', ['Mixing', 'Baking', 'Decorating', 'Cooling', 'Packaging']);
 define('ALLOWED_STATUSES', ['Pending', 'In Progress', 'Completed']);
 
 try {
@@ -94,39 +94,43 @@ try {
             $taste_flavour = filter_input(INPUT_POST, 'taste_flavour', FILTER_SANITIZE_STRING);
             $shape_size = filter_input(INPUT_POST, 'shape_size', FILTER_SANITIZE_STRING);
             $packaging = filter_input(INPUT_POST, 'packaging', FILTER_SANITIZE_STRING);
+            $qc_comments = trim(filter_var($_POST['qc_comments'], FILTER_SANITIZE_STRING));
 
             // Validate inputs
-            $allowed_stages = ['Mixing', 'Baking', 'Cooling', 'Packaging'];
+            $allowed_stages = ['Mixing', 'Baking', 'Cooling', 'Decorating', 'Packaging'];
             $allowed_appearance = ['Good', 'Uneven Surface', 'Overbaked', 'Undercooked'];
             $allowed_texture = ['Soft & Fluffy', 'Dense', 'Dry', 'Soggy'];
             $allowed_taste_flavour = ['Excellent Flavour', 'Bland', 'Overly Sweet', 'Burnt Taste'];
             $allowed_shape_size = ['Uniform Shape', 'Uneven Size', 'Cracked Surface', 'Misshaped'];
             $allowed_packaging = ['Properly Packaged', 'Damaged Packaged', 'Missing Labels', 'Sealed Incorrectly'];
 
-            if (!in_array($production_stage, $allowed_stages) ||
-                !in_array($appearance, $allowed_appearance) ||
-                !in_array($texture, $allowed_texture) ||
-                !in_array($taste_flavour, $allowed_taste_flavour) ||
-                !in_array($shape_size, $allowed_shape_size)) {
-                throw new Exception("Invalid quality check data provided.");
+            // Validate QC Comments
+            if (strlen($qc_comments) > MAX_QUALITY_CHECK_LENGTH) {
+                throw new Exception("QC Comments exceed the maximum length of " . MAX_QUALITY_CHECK_LENGTH . " characters");
             }
 
-            // Insert Quality Check data into the database
-            $stmt = $conn->prepare("INSERT INTO tbl_quality_checks 
-                (batch_id, user_id, production_stage, appearance, texture, taste_flavour, shape_size, packaging) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([
-                $batch_id,
-                $_SESSION['user_id'],
-                $production_stage,
-                $appearance,
-                $texture,
-                $taste_flavour,
-                $shape_size,
-                $packaging
-            ]);
+            // Validate production stage
+            if ($production_stage && !in_array($production_stage, $allowed_stages)) {
+                throw new Exception("Invalid production stage selected.");
+            }
 
-            // $success_message = "Quality check data submitted successfully!";
+            // Insert new quality check record only if production stage is selected
+            if ($production_stage) {
+                $stmt = $conn->prepare("INSERT INTO tbl_quality_checks 
+                    (batch_id, user_id, production_stage, appearance, texture, taste_flavour, shape_size, packaging, qc_comments) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([
+                    $batch_id,
+                    $_SESSION['user_id'],
+                    $production_stage,
+                    $appearance ?: null,
+                    $texture ?: null,
+                    $taste_flavour ?: null,
+                    $shape_size ?: null,
+                    $packaging ?: null,
+                    $qc_comments
+                ]);
+            }
 
             // Validate batch_id
             $batch_id = filter_input(INPUT_POST, 'batch_id', FILTER_VALIDATE_INT);
@@ -190,9 +194,6 @@ try {
             if (strlen($remarks) > MAX_REMARKS_LENGTH) {
                 throw new Exception("Remarks exceed maximum length of " . MAX_REMARKS_LENGTH . " characters");
             }
-            if (strlen($quality_check) > MAX_QUALITY_CHECK_LENGTH) {
-                throw new Exception("Quality check comments exceed maximum length of " . MAX_QUALITY_CHECK_LENGTH . " characters");
-            }
 
             // Validate assignments array
             $assignments = isset($_POST['assignments']) ? $_POST['assignments'] : [];
@@ -204,6 +205,8 @@ try {
             }
 
             $validated_assignments = [];
+            $baker_tasks = []; // Track tasks per baker
+
             foreach ($assignments as $assignment) {
                 // Validate user_id
                 $user_id = filter_var($assignment['user_id'], FILTER_VALIDATE_INT);
@@ -223,6 +226,18 @@ try {
                     throw new Exception("Invalid task selected");
                 }
 
+                // Check for duplicate tasks for the same baker
+                if (!isset($baker_tasks[$user_id])) {
+                    $baker_tasks[$user_id] = [];
+                }
+                
+                // Check if this baker already has this task
+                if (in_array($task, $baker_tasks[$user_id])) {
+                    throw new Exception("Baker already has this task assigned");
+                }
+                
+                $baker_tasks[$user_id][] = $task;
+
                 $validated_assignments[] = [
                     'user_id' => $user_id,
                     'task' => $task
@@ -236,14 +251,41 @@ try {
                                     batch_startTime = ?,
                                     batch_endTime = ?,
                                     batch_status = ?,
-                                    batch_remarks = ?,
-                                    quality_check = ?
+                                    batch_remarks = ?
                                   WHERE batch_id = ?");
-            $stmt->execute([$recipe_id, $schedule_id, $start_time, $end_time, $status, $remarks, $quality_check, $batch_id]);
+            $stmt->execute([$recipe_id, $schedule_id, $start_time, $end_time, $status, $remarks, $batch_id]);
 
-            // Delete existing assignments
-            $stmt = $conn->prepare("DELETE FROM tbl_batch_assignments WHERE batch_id = ?");
+            // Get existing assignments to compare
+            $stmt = $conn->prepare("SELECT * FROM tbl_batch_assignments WHERE batch_id = ?");
             $stmt->execute([$batch_id]);
+            $current_assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Create a map of existing assignments for easy lookup
+            $existing_assignments_map = [];
+            foreach ($current_assignments as $assignment) {
+                $key = $assignment['user_id'] . '_' . $assignment['ba_task'];
+                $existing_assignments_map[$key] = $assignment;
+            }
+
+            // Create a map of new assignments
+            $new_assignments_map = [];
+            foreach ($validated_assignments as $assignment) {
+                $key = $assignment['user_id'] . '_' . $assignment['task'];
+                $new_assignments_map[$key] = $assignment;
+            }
+
+            // Delete assignments that are no longer present
+            foreach ($existing_assignments_map as $key => $assignment) {
+                if (!isset($new_assignments_map[$key])) {
+                    $stmt = $conn->prepare("DELETE FROM tbl_batch_assignments 
+                                          WHERE batch_id = ? AND user_id = ? AND ba_task = ?");
+                    $stmt->execute([
+                        $batch_id,
+                        $assignment['user_id'],
+                        $assignment['ba_task']
+                    ]);
+                }
+            }
 
             // Insert new assignments
             if (!empty($validated_assignments)) {
@@ -252,11 +294,16 @@ try {
                                       VALUES (?, ?, ?, 'Pending')");
                 
                 foreach ($validated_assignments as $assignment) {
-                    $stmt->execute([
-                        $batch_id,
-                        $assignment['user_id'],
-                        $assignment['task']
-                    ]);
+                    $key = $assignment['user_id'] . '_' . $assignment['task'];
+                    
+                    // Only insert if this assignment doesn't already exist
+                    if (!isset($existing_assignments_map[$key])) {
+                        $stmt->execute([
+                            $batch_id,
+                            $assignment['user_id'],
+                            $assignment['task']
+                        ]);
+                    }
                 }
             }
 
@@ -293,7 +340,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Batch - YSLProduction</title>
+    <title>Edit Batch - Roti Seri Production</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/batch.css">
@@ -419,7 +466,9 @@ try {
                                     <option value="">Select Task</option>
                                     <option value="Mixing" <?php echo $assignment['ba_task'] === 'Mixing' ? 'selected' : ''; ?>>Mixing</option>
                                     <option value="Baking" <?php echo $assignment['ba_task'] === 'Baking' ? 'selected' : ''; ?>>Baking</option>
+                                    <option value="Cooling" <?php echo $assignment['ba_task'] === 'Cooling' ? 'selected' : ''; ?>>Cooling</option>
                                     <option value="Decorating" <?php echo $assignment['ba_task'] === 'Decorating' ? 'selected' : ''; ?>>Decorating</option>
+                                    <option value="Packaging" <?php echo $assignment['ba_task'] === 'Packaging' ? 'selected' : ''; ?>>Packaging</option>
                                 </select>
                                 <?php if ($is_baker): ?>
                                     <input type="hidden" name="assignments[<?php echo $index; ?>][task]" value="<?php echo htmlspecialchars($assignment['ba_task']); ?>">
@@ -443,64 +492,14 @@ try {
                 <h2>Quality Check</h2>
                 <div class="form-group">
                     <label for="production_stage">Production Stage</label>
-                    <select id="production_stage" name="production_stage" required>
+                    <select id="production_stage" name="production_stage">
+                        <option value="">Select Production Stage</option>
                         <option value="Mixing">Mixing</option>
                         <option value="Baking">Baking</option>
                         <option value="Cooling">Cooling</option>
+                        <option value="Decorating">Decorating</option>
                         <option value="Packaging">Packaging</option>
                     </select>
-                </div>
-                <div class="form-group">
-                    <label for="appearance">Appearance</label>
-                    <select id="appearance" name="appearance" required>
-                        <option value="Good">Good</option>
-                        <option value="Uneven Surface">Uneven Surface</option>
-                        <option value="Overbaked">Overbaked</option>
-                        <option value="Undercooked">Undercooked</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="texture">Texture</label>
-                    <select id="texture" name="texture" required>
-                        <option value="Soft & Fluffy">Soft & Fluffy</option>
-                        <option value="Dense">Dense</option>
-                        <option value="Dry">Dry</option>
-                        <option value="Soggy">Soggy</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="taste_flavour">Taste & Flavour</label>
-                    <select id="taste_flavour" name="taste_flavour" required>
-                        <option value="Excellent Flavour">Excellent Flavour</option>
-                        <option value="Bland">Bland</option>
-                        <option value="Overly Sweet">Overly Sweet</option>
-                        <option value="Burnt Taste">Burnt Taste</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="shape_size">Shape & Size</label>
-                    <select id="shape_size" name="shape_size" required>
-                        <option value="Uniform Shape">Uniform Shape</option>
-                        <option value="Uneven Size">Uneven Size</option>
-                        <option value="Cracked Surface">Cracked Surface</option>
-                        <option value="Misshaped">Misshaped</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="packaging">Packaging</label>
-                    <select id="packaging" name="packaging">
-                        <option value="Properly Packaged">Properly Packaged</option>
-                        <option value="Damaged Packaged">Damaged Packaged</option>
-                        <option value="Missing Labels">Missing Labels</option>
-                        <option value="Sealed Incorrectly">Sealed Incorrectly</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="quality_check">Quality Check Comments</label>
-                    <textarea id="quality_check" name="quality_check" rows="3" <?php echo $is_baker ? 'readonly' : ''; ?> 
-                              placeholder="Enter quality check comments, production issues, or quantity concerns..."
-                    ><?php echo htmlspecialchars($batch['quality_check'] ?? ''); ?></textarea>
                 </div>
             </div>
 
